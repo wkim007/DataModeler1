@@ -233,6 +233,25 @@ button:disabled {
   right: 0;
 }
 
+.rel-hit,
+.rel-line {
+  cursor: pointer;
+}
+
+.rel-delete rect {
+  fill: #f67280;
+  stroke: #14090a;
+  stroke-width: 1;
+}
+
+.rel-delete text {
+  fill: #14090a;
+  font-size: 14px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
 .rightbar {
   padding: 24px;
   background: var(--panel);

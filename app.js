@@ -62,6 +62,7 @@ function App() {
   const [isPanning, setIsPanning] = useState(false);
   const [spaceDown, setSpaceDown] = useState(false);
   const [ddlEntityId, setDdlEntityId] = useState(null);
+  const [selectedRelId, setSelectedRelId] = useState(null);
 
   const boardRef = useRef(null);
   const dragRef = useRef({ id: null, offsetX: 0, offsetY: 0 });
@@ -280,6 +281,9 @@ function App() {
       ...prev,
       relationships: prev.relationships.filter(rel => rel.id !== relId)
     }));
+    if (selectedRelId === relId) {
+      setSelectedRelId(null);
+    }
   };
 
   const exportJson = () => {
@@ -496,6 +500,12 @@ function App() {
         onWheel={handleWheel}
         onMouseDown={handleCanvasMouseDown}
         onContextMenu={event => event.preventDefault()}
+        onClick={(event) => {
+          if (event.target.closest('.rel-line') || event.target.closest('.rel-hit') || event.target.closest('.rel-delete')) {
+            return;
+          }
+          setSelectedRelId(null);
+        }}
       >
         <div className="canvas-grid"></div>
         <div
@@ -512,17 +522,41 @@ function App() {
               const endX = to.x;
               const endY = getAttrY(to, rel.toAttr);
               const midX = (startX + endX) / 2;
+              const midY = (startY + endY) / 2;
+              const isSelected = selectedRelId === rel.id;
               return (
-                <g key={rel.id}>
+                <g key={rel.id} className="rel-group">
+                  <path
+                    d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+                    stroke="transparent"
+                    strokeWidth="16"
+                    fill="none"
+                    className="rel-hit"
+                    onClick={() => setSelectedRelId(rel.id)}
+                  />
                   <path
                     d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
                     stroke="#4ecdc4"
                     strokeWidth="2"
                     fill="none"
+                    className="rel-line"
+                    onClick={() => setSelectedRelId(rel.id)}
                   />
-                  <text x={midX + 6} y={(startY + endY) / 2 - 6} fill="#98a2b3" fontSize="12">
+                  <text x={midX + 6} y={midY - 6} fill="#98a2b3" fontSize="12">
                     {rel.type}
                   </text>
+                  {isSelected && (
+                    <g
+                      className="rel-delete"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteRelationship(rel.id);
+                      }}
+                    >
+                      <rect x={midX - 10} y={midY - 22} width="20" height="20" rx="6" />
+                      <text x={midX} y={midY - 8}>×</text>
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -534,14 +568,15 @@ function App() {
               className={`entity ${selectedEntityId === entity.id ? 'selected' : ''}`}
               style={{ left: entity.x, top: entity.y }}
               onMouseDown={event => handleMouseDown(event, entity.id)}
-            onClick={() => {
-              setSelectedEntityId(entity.id);
-              if (linkMode && linkFrom && linkFrom !== entity.id) {
-                completeLink(entity.id);
-              }
-            }}
-            onDoubleClick={() => setDdlEntityId(entity.id)}
-          >
+              onClick={() => {
+                setSelectedEntityId(entity.id);
+                setSelectedRelId(null);
+                if (linkMode && linkFrom && linkFrom !== entity.id) {
+                  completeLink(entity.id);
+                }
+              }}
+              onDoubleClick={() => setDdlEntityId(entity.id)}
+            >
               <header>
                 <span>{entity.name}</span>
                 <button
