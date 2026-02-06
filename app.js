@@ -80,6 +80,8 @@ function App() {
   const [ddlEntityId, setDdlEntityId] = useState(null);
   const [selectedRelId, setSelectedRelId] = useState(null);
   const [isResizing, setIsResizing] = useState(false);
+  const [toast, setToast] = useState("");
+  const [selectedAttrId, setSelectedAttrId] = useState(null);
 
   const boardRef = useRef(null);
   const dragRef = useRef({ id: null, offsetX: 0, offsetY: 0 });
@@ -111,6 +113,16 @@ function App() {
 
   const selectedEntity =
     model.entities.find((e) => e.id === selectedEntityId) || null;
+
+  useEffect(() => {
+    if (!selectedEntity || !selectedAttrId) return;
+    const exists = selectedEntity.attributes.some(
+      (attr) => attr.id === selectedAttrId,
+    );
+    if (!exists) {
+      setSelectedAttrId(null);
+    }
+  }, [selectedEntityId, selectedAttrId, model]);
 
   const relationshipLookup = useMemo(() => {
     const map = new Map();
@@ -321,6 +333,9 @@ function App() {
         };
       }),
     }));
+    if (selectedAttrId === attrId) {
+      setSelectedAttrId(null);
+    }
   };
 
   const startLink = () => {
@@ -405,6 +420,8 @@ function App() {
       });
       if (!res.ok) throw new Error("Save failed");
       setStatus("Model saved to MongoDB.");
+      setToast("Save it successfully");
+      setTimeout(() => setToast(""), 2000);
     } catch (err) {
       setStatus("Failed to save to MongoDB.");
     }
@@ -609,8 +626,8 @@ function App() {
           </div>
           <div className="toolbar">
             <button onClick={addEntity}>Add Entity</button>
-            <button className="secondary" onClick={saveToMongo}>
-              Save to MongoDB
+            <button className="secondary save-btn" onClick={saveToMongo}>
+              Save
             </button>
             <button className="secondary" onClick={exportJson}>
               Export JSON
@@ -751,6 +768,9 @@ function App() {
               onClick={() => {
                 setSelectedEntityId(entity.id);
                 setSelectedRelId(null);
+                if (selectedEntityId !== entity.id) {
+                  setSelectedAttrId(null);
+                }
                 if (linkMode && linkFrom && linkFrom !== entity.id) {
                   completeLink(entity.id);
                 }
@@ -770,8 +790,16 @@ function App() {
                 </button>
               </header>
               <ul>
-                {entity.attributes.map((attr) => (
-                  <li key={attr.id}>
+              {entity.attributes.map((attr) => (
+                  <li
+                    key={attr.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedEntityId(entity.id);
+                      setSelectedAttrId(attr.id);
+                    }}
+                    className={selectedAttrId === attr.id ? "attr-selected" : ""}
+                  >
                     {viewMode === "physical" && (
                       <span className="badge">
                         {attr.isPrimary ? "PK" : "COL"}
@@ -852,70 +880,79 @@ function App() {
 
               <div className="divider"></div>
 
-              {selectedEntity.attributes.map((attr) => (
-                <div
-                  key={attr.id}
-                  className="card"
-                  style={{ marginBottom: "10px" }}
-                >
-                  <div className="field">
-                    <label>Attribute</label>
-                    <input
-                      value={attr.name}
-                      onChange={(event) =>
-                        updateAttribute(attr.id, { name: event.target.value })
-                      }
-                    />
+              {selectedAttrId ? (() => {
+                const attr = selectedEntity.attributes.find((item) => item.id === selectedAttrId);
+                if (!attr) {
+                  return <p>Select an attribute to edit.</p>;
+                }
+                return (
+                  <div className="card" style={{ marginBottom: "10px" }}>
+                    <div className="field">
+                      <label>Attribute</label>
+                      <input
+                        value={attr.name}
+                        onChange={(event) =>
+                          updateAttribute(attr.id, { name: event.target.value })
+                        }
+                      />
+                    </div>
+                    {viewMode === "physical" && (
+                      <>
+                        <div className="field">
+                          <label>Type</label>
+                          <input
+                            value={attr.type}
+                            onChange={(event) =>
+                              updateAttribute(attr.id, { type: event.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Primary Key</label>
+                          <select
+                            value={attr.isPrimary ? "yes" : "no"}
+                            onChange={(event) =>
+                              updateAttribute(attr.id, {
+                                isPrimary: event.target.value === "yes",
+                              })
+                            }
+                          >
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        </div>
+                        <div className="field">
+                          <label>Nullable</label>
+                          <select
+                            value={attr.isNullable ? "yes" : "no"}
+                            onChange={(event) =>
+                              updateAttribute(attr.id, {
+                                isNullable: event.target.value === "yes",
+                              })
+                            }
+                          >
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    <div className="toolbar">
+                      <button className="secondary" onClick={() => setSelectedAttrId(null)}>
+                        Close
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => deleteAttribute(attr.id)}
+                      >
+                        Delete Attribute
+                      </button>
+                    </div>
                   </div>
-                  {viewMode === "physical" && (
-                    <>
-                      <div className="field">
-                        <label>Type</label>
-                        <input
-                          value={attr.type}
-                          onChange={(event) =>
-                            updateAttribute(attr.id, { type: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Primary Key</label>
-                        <select
-                          value={attr.isPrimary ? "yes" : "no"}
-                          onChange={(event) =>
-                            updateAttribute(attr.id, {
-                              isPrimary: event.target.value === "yes",
-                            })
-                          }
-                        >
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      </div>
-                      <div className="field">
-                        <label>Nullable</label>
-                        <select
-                          value={attr.isNullable ? "yes" : "no"}
-                          onChange={(event) =>
-                            updateAttribute(attr.id, {
-                              isNullable: event.target.value === "yes",
-                            })
-                          }
-                        >
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-                  <button
-                    className="danger"
-                    onClick={() => deleteAttribute(attr.id)}
-                  >
-                    Delete Attribute
-                  </button>
-                </div>
-              ))}
+                );
+              })() : (
+                <p>Select an attribute to edit.</p>
+              )}
             </>
           ) : (
             <p>Select an entity to edit its details.</p>
@@ -925,11 +962,13 @@ function App() {
         <div className="card">
           <h2>Relationships</h2>
           <div className="relationships">
-            {model.relationships.map((rel) => {
+            {selectedRelId ? (() => {
+              const rel = model.relationships.find((item) => item.id === selectedRelId);
+              if (!rel) return <p>Select a relationship to edit.</p>;
               const from = relationshipLookup.get(rel.from);
               const to = relationshipLookup.get(rel.to);
               return (
-                <div key={rel.id} className="item">
+                <div className="item">
                   <div>
                     <strong>{from ? from.name : "Unknown"}</strong> →{" "}
                     <strong>{to ? to.name : "Unknown"}</strong>
@@ -996,16 +1035,22 @@ function App() {
                       <option value="N:N">N:N</option>
                     </select>
                   </div>
-                  <button
-                    className="danger"
-                    onClick={() => deleteRelationship(rel.id)}
-                  >
-                    Delete
-                  </button>
+                  <div className="toolbar">
+                    <button className="secondary" onClick={() => setSelectedRelId(null)}>
+                      Close
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => deleteRelationship(rel.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               );
-            })}
-            {model.relationships.length === 0 && <p>No relationships yet.</p>}
+            })() : (
+              <p>Select a relationship to edit.</p>
+            )}
           </div>
         </div>
 
@@ -1046,6 +1091,8 @@ function App() {
           </div>
         </div>
       )}
+
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

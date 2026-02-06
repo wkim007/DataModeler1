@@ -89,6 +89,12 @@ button.secondary {
   color: var(--ink);
 }
 
+button.save-btn {
+  background: linear-gradient(135deg, #f9d423 0%, #f83600 100%);
+  color: #1a0e00;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
 button.danger {
   background: var(--danger);
   color: #14090a;
@@ -222,6 +228,14 @@ button:disabled {
   gap: 8px;
   align-items: center;
   color: var(--muted);
+  cursor: pointer;
+}
+
+.entity li.attr-selected {
+  color: var(--ink);
+  background: rgba(78, 205, 196, 0.15);
+  border-radius: 8px;
+  padding: 4px 6px;
 }
 
 .badge {
@@ -348,6 +362,21 @@ textarea {
 
 .modal textarea {
   min-height: 220px;
+}
+
+.toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1e2630;
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  padding: 14px 22px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+  text-align: center;
 }
 
 @media (max-width: 1100px) {
