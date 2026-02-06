@@ -59,11 +59,8 @@ const defaultModel = () => ({
 });
 
 function App() {
+  const API_BASE = "http://localhost:3001";
   const [model, setModel] = useState(() => {
-    const stored = localStorage.getItem("modeler-data");
-    if (stored) {
-      return JSON.parse(stored);
-    }
     const model = defaultModel();
     model.relationships[0].from = model.entities[0].id;
     model.relationships[0].to = model.entities[1].id;
@@ -96,8 +93,21 @@ function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem("modeler-data", JSON.stringify(model));
-  }, [model]);
+    const loadLatest = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/model`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data) {
+          setModel(data);
+          setStatus("Loaded latest model from MongoDB.");
+        }
+      } catch (err) {
+        setStatus("Could not load model from MongoDB.");
+      }
+    };
+    loadLatest();
+  }, []);
 
   const selectedEntity =
     model.entities.find((e) => e.id === selectedEntityId) || null;
@@ -386,6 +396,20 @@ function App() {
     }
   };
 
+  const saveToMongo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: model }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setStatus("Model saved to MongoDB.");
+    } catch (err) {
+      setStatus("Failed to save to MongoDB.");
+    }
+  };
+
   const ddl = useMemo(() => {
     const tableDdls = model.entities.map((entity) => {
       const columns = entity.attributes.map((attr) => {
@@ -585,6 +609,9 @@ function App() {
           </div>
           <div className="toolbar">
             <button onClick={addEntity}>Add Entity</button>
+            <button className="secondary" onClick={saveToMongo}>
+              Save to MongoDB
+            </button>
             <button className="secondary" onClick={exportJson}>
               Export JSON
             </button>
