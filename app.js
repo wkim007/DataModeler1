@@ -74,6 +74,7 @@ function App() {
   const [linkFrom, setLinkFrom] = useState(null);
   const [jsonDraft, setJsonDraft] = useState("");
   const [status, setStatus] = useState("Ready.");
+  const [viewMode, setViewMode] = useState("physical");
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [guides, setGuides] = useState({ x: [], y: [] });
   const [guidesOn, setGuidesOn] = useState(true);
@@ -575,6 +576,13 @@ function App() {
 
         <div className="card">
           <h2>Project</h2>
+          <div className="field">
+            <label>View Mode</label>
+            <select value={viewMode} onChange={(event) => setViewMode(event.target.value)}>
+              <option value="physical">Physical View</option>
+              <option value="logical">Logical View</option>
+            </select>
+          </div>
           <div className="toolbar">
             <button onClick={addEntity}>Add Entity</button>
             <button className="secondary" onClick={exportJson}>
@@ -609,7 +617,14 @@ function App() {
 
         <div className="card">
           <h2>DDL (PostgreSQL)</h2>
-          <textarea readOnly value={ddl} />
+          <textarea
+            readOnly
+            value={
+              viewMode === "physical"
+                ? ddl
+                : "DDL is only available in Physical View."
+            }
+          />
         </div>
       </aside>
 
@@ -730,10 +745,13 @@ function App() {
               <ul>
                 {entity.attributes.map((attr) => (
                   <li key={attr.id}>
-                    <span className="badge">
-                      {attr.isPrimary ? "PK" : "COL"}
-                    </span>
-                    {attr.name} : {attr.type}
+                    {viewMode === "physical" && (
+                      <span className="badge">
+                        {attr.isPrimary ? "PK" : "COL"}
+                      </span>
+                    )}
+                    {attr.name}
+                    {viewMode === "physical" ? ` : ${attr.type}` : ""}
                   </li>
                 ))}
               </ul>
@@ -822,43 +840,47 @@ function App() {
                       }
                     />
                   </div>
-                  <div className="field">
-                    <label>Type</label>
-                    <input
-                      value={attr.type}
-                      onChange={(event) =>
-                        updateAttribute(attr.id, { type: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Primary Key</label>
-                    <select
-                      value={attr.isPrimary ? "yes" : "no"}
-                      onChange={(event) =>
-                        updateAttribute(attr.id, {
-                          isPrimary: event.target.value === "yes",
-                        })
-                      }
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Nullable</label>
-                    <select
-                      value={attr.isNullable ? "yes" : "no"}
-                      onChange={(event) =>
-                        updateAttribute(attr.id, {
-                          isNullable: event.target.value === "yes",
-                        })
-                      }
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  </div>
+                  {viewMode === "physical" && (
+                    <>
+                      <div className="field">
+                        <label>Type</label>
+                        <input
+                          value={attr.type}
+                          onChange={(event) =>
+                            updateAttribute(attr.id, { type: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Primary Key</label>
+                        <select
+                          value={attr.isPrimary ? "yes" : "no"}
+                          onChange={(event) =>
+                            updateAttribute(attr.id, {
+                              isPrimary: event.target.value === "yes",
+                            })
+                          }
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label>Nullable</label>
+                        <select
+                          value={attr.isNullable ? "yes" : "no"}
+                          onChange={(event) =>
+                            updateAttribute(attr.id, {
+                              isNullable: event.target.value === "yes",
+                            })
+                          }
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
                   <button
                     className="danger"
                     onClick={() => deleteAttribute(attr.id)}
