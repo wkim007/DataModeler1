@@ -159,6 +159,11 @@ button:disabled {
   border-radius: 12px;
   box-shadow: var(--shadow);
   cursor: grab;
+  overflow: visible;
+}
+
+.entity:active {
+  cursor: grabbing;
 }
 
 .entity header {
@@ -189,6 +194,27 @@ button:disabled {
   display: grid;
   gap: 6px;
   font-size: 13px;
+  overflow: auto;
+  max-height: calc(100% - 40px);
+}
+
+.resize-handle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(247, 183, 51, 0.18);
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  cursor: nwse-resize;
+  opacity: 0.7;
+  z-index: 2;
+}
+
+.resize-handle:hover {
+  opacity: 1;
 }
 
 .entity li {

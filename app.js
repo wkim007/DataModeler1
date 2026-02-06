@@ -1,16 +1,20 @@
 const { useState, useMemo, useRef, useEffect } = React;
 
 const ENTITY_WIDTH = 200;
+const RESIZE_MIN_W = 160;
+const RESIZE_MAX_W = 360;
+const RESIZE_MIN_H = 140;
+const RESIZE_MAX_H = 520;
 const HEADER_HEIGHT = 40;
 const ROW_HEIGHT = 26;
 const SNAP_DISTANCE = 8;
 
 const emptyAttribute = () => ({
   id: crypto.randomUUID(),
-  name: 'new_field',
-  type: 'text',
+  name: "new_field",
+  type: "text",
   isPrimary: false,
-  isNullable: true
+  isNullable: true,
 });
 
 const defaultEntity = (name, x, y) => ({
@@ -18,31 +22,45 @@ const defaultEntity = (name, x, y) => ({
   name,
   x,
   y,
+  width: ENTITY_WIDTH,
+  height: 0,
   attributes: [
-    { id: crypto.randomUUID(), name: 'id', type: 'uuid', isPrimary: true, isNullable: false },
-    { id: crypto.randomUUID(), name: 'created_at', type: 'timestamp', isPrimary: false, isNullable: false }
-  ]
+    {
+      id: crypto.randomUUID(),
+      name: "id",
+      type: "uuid",
+      isPrimary: true,
+      isNullable: false,
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "created_at",
+      type: "timestamp",
+      isPrimary: false,
+      isNullable: false,
+    },
+  ],
 });
 
 const defaultModel = () => ({
   entities: [
-    defaultEntity('customers', 120, 120),
-    defaultEntity('orders', 480, 260)
+    defaultEntity("customers", 120, 120),
+    defaultEntity("orders", 480, 260),
   ],
   relationships: [
     {
       id: crypto.randomUUID(),
       from: null,
       to: null,
-      type: '1:N',
-      label: 'places'
-    }
-  ]
+      type: "1:N",
+      label: "places",
+    },
+  ],
 });
 
 function App() {
   const [model, setModel] = useState(() => {
-    const stored = localStorage.getItem('modeler-data');
+    const stored = localStorage.getItem("modeler-data");
     if (stored) {
       return JSON.parse(stored);
     }
@@ -54,8 +72,8 @@ function App() {
   const [selectedEntityId, setSelectedEntityId] = useState(null);
   const [linkMode, setLinkMode] = useState(false);
   const [linkFrom, setLinkFrom] = useState(null);
-  const [jsonDraft, setJsonDraft] = useState('');
-  const [status, setStatus] = useState('Ready.');
+  const [jsonDraft, setJsonDraft] = useState("");
+  const [status, setStatus] = useState("Ready.");
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [guides, setGuides] = useState({ x: [], y: [] });
   const [guidesOn, setGuidesOn] = useState(true);
@@ -63,20 +81,29 @@ function App() {
   const [spaceDown, setSpaceDown] = useState(false);
   const [ddlEntityId, setDdlEntityId] = useState(null);
   const [selectedRelId, setSelectedRelId] = useState(null);
+  const [isResizing, setIsResizing] = useState(false);
 
   const boardRef = useRef(null);
   const dragRef = useRef({ id: null, offsetX: 0, offsetY: 0 });
   const panRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+  const resizeRef = useRef({
+    id: null,
+    startX: 0,
+    startY: 0,
+    startWidth: ENTITY_WIDTH,
+    startHeight: 0,
+  });
 
   useEffect(() => {
-    localStorage.setItem('modeler-data', JSON.stringify(model));
+    localStorage.setItem("modeler-data", JSON.stringify(model));
   }, [model]);
 
-  const selectedEntity = model.entities.find(e => e.id === selectedEntityId) || null;
+  const selectedEntity =
+    model.entities.find((e) => e.id === selectedEntityId) || null;
 
   const relationshipLookup = useMemo(() => {
     const map = new Map();
-    model.entities.forEach(entity => map.set(entity.id, entity));
+    model.entities.forEach((entity) => map.set(entity.id, entity));
     return map;
   }, [model.entities]);
 
@@ -84,48 +111,89 @@ function App() {
     const board = boardRef.current;
     if (!board) return;
     const rect = board.getBoundingClientRect();
-    const entity = model.entities.find(e => e.id === entityId);
+    const entity = model.entities.find((e) => e.id === entityId);
     if (!entity) return;
     dragRef.current = {
       id: entityId,
-      offsetX: event.clientX - rect.left - (entity.x * viewport.scale + viewport.x),
-      offsetY: event.clientY - rect.top - (entity.y * viewport.scale + viewport.y)
+      offsetX:
+        event.clientX - rect.left - (entity.x * viewport.scale + viewport.x),
+      offsetY:
+        event.clientY - rect.top - (entity.y * viewport.scale + viewport.y),
     };
     setSelectedEntityId(entityId);
   };
 
-  const handleMouseMove = event => {
+  const handleMouseMove = (event) => {
     const { id, offsetX, offsetY } = dragRef.current;
+    if (resizeRef.current.id) {
+      const board = boardRef.current;
+      if (!board) return;
+      const rect = board.getBoundingClientRect();
+      const currentX =
+        (event.clientX - rect.left - viewport.x) / viewport.scale;
+      const currentY =
+        (event.clientY - rect.top - viewport.y) / viewport.scale;
+      const deltaX = currentX - resizeRef.current.startX;
+      const deltaY = currentY - resizeRef.current.startY;
+      const entity = model.entities.find(
+        (item) => item.id === resizeRef.current.id,
+      );
+      const minHeight = entity ? getEntityMinHeight(entity) : RESIZE_MIN_H;
+      const nextWidth = Math.min(
+        RESIZE_MAX_W,
+        Math.max(RESIZE_MIN_W, resizeRef.current.startWidth + deltaX),
+      );
+      const nextHeight = Math.min(
+        RESIZE_MAX_H,
+        Math.max(minHeight, resizeRef.current.startHeight + deltaY),
+      );
+      setModel((prev) => ({
+        ...prev,
+        entities: prev.entities.map((entity) =>
+          entity.id === resizeRef.current.id
+            ? { ...entity, width: nextWidth, height: nextHeight }
+            : entity,
+        ),
+      }));
+      return;
+    }
     if (!id) {
       if (!isPanning) return;
       const nextX = panRef.current.startX + (event.clientX - panRef.current.x);
       const nextY = panRef.current.startY + (event.clientY - panRef.current.y);
-      setViewport(prev => ({ ...prev, x: nextX, y: nextY }));
+      setViewport((prev) => ({ ...prev, x: nextX, y: nextY }));
       return;
     }
     const board = boardRef.current;
     if (!board) return;
     const rect = board.getBoundingClientRect();
-    const rawX = (event.clientX - rect.left - offsetX - viewport.x) / viewport.scale;
-    const rawY = (event.clientY - rect.top - offsetY - viewport.y) / viewport.scale;
+    const rawX =
+      (event.clientX - rect.left - offsetX - viewport.x) / viewport.scale;
+    const rawY =
+      (event.clientY - rect.top - offsetY - viewport.y) / viewport.scale;
     let nextX = Math.max(24, rawX);
     let nextY = Math.max(24, rawY);
 
     if (guidesOn) {
-      const active = model.entities.find(entity => entity.id === id);
-      const activeHeight = HEADER_HEIGHT + (active ? active.attributes.length * ROW_HEIGHT + 16 : 120);
-      const pointsX = [nextX, nextX + ENTITY_WIDTH / 2, nextX + ENTITY_WIDTH];
+      const active = model.entities.find((entity) => entity.id === id);
+      const activeHeight = active ? getEntityHeight(active) : 120;
+      const activeWidth = active?.width ?? ENTITY_WIDTH;
+      const pointsX = [nextX, nextX + activeWidth / 2, nextX + activeWidth];
       const pointsY = [nextY, nextY + activeHeight / 2, nextY + activeHeight];
       const guideX = [];
       const guideY = [];
 
-      model.entities.forEach(entity => {
+      model.entities.forEach((entity) => {
         if (entity.id === id) return;
-        const height = HEADER_HEIGHT + entity.attributes.length * ROW_HEIGHT + 16;
-        const targetsX = [entity.x, entity.x + ENTITY_WIDTH / 2, entity.x + ENTITY_WIDTH];
+        const height = getEntityHeight(entity);
+        const targetsX = [
+          entity.x,
+          entity.x + entity.width / 2,
+          entity.x + entity.width,
+        ];
         const targetsY = [entity.y, entity.y + height / 2, entity.y + height];
-        pointsX.forEach(point => {
-          targetsX.forEach(target => {
+        pointsX.forEach((point) => {
+          targetsX.forEach((target) => {
             if (Math.abs(point - target) <= SNAP_DISTANCE) {
               const delta = target - point;
               nextX += delta;
@@ -133,8 +201,8 @@ function App() {
             }
           });
         });
-        pointsY.forEach(point => {
-          targetsY.forEach(target => {
+        pointsY.forEach((point) => {
+          targetsY.forEach((target) => {
             if (Math.abs(point - target) <= SNAP_DISTANCE) {
               const delta = target - point;
               nextY += delta;
@@ -146,35 +214,45 @@ function App() {
 
       setGuides({ x: guideX, y: guideY });
     }
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      entities: prev.entities.map(entity =>
-        entity.id === id ? { ...entity, x: nextX, y: nextY } : entity
-      )
+      entities: prev.entities.map((entity) =>
+        entity.id === id ? { ...entity, x: nextX, y: nextY } : entity,
+      ),
     }));
   };
 
   const handleMouseUp = () => {
     dragRef.current = { id: null, offsetX: 0, offsetY: 0 };
+    resizeRef.current = {
+      id: null,
+      startX: 0,
+      startY: 0,
+      startWidth: ENTITY_WIDTH,
+      startHeight: 0,
+    };
     setGuides({ x: [], y: [] });
     setIsPanning(false);
+    setIsResizing(false);
   };
 
   const addEntity = () => {
     const name = `table_${model.entities.length + 1}`;
     const entity = defaultEntity(name, 160 + model.entities.length * 60, 120);
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      entities: [...prev.entities, entity]
+      entities: [...prev.entities, entity],
     }));
     setSelectedEntityId(entity.id);
   };
 
-  const deleteEntity = id => {
-    setModel(prev => ({
+  const deleteEntity = (id) => {
+    setModel((prev) => ({
       ...prev,
-      entities: prev.entities.filter(entity => entity.id !== id),
-      relationships: prev.relationships.filter(rel => rel.from !== id && rel.to !== id)
+      entities: prev.entities.filter((entity) => entity.id !== id),
+      relationships: prev.relationships.filter(
+        (rel) => rel.from !== id && rel.to !== id,
+      ),
     }));
     if (selectedEntityId === id) {
       setSelectedEntityId(null);
@@ -184,53 +262,53 @@ function App() {
   const addAttribute = () => {
     if (!selectedEntity) return;
     const attr = emptyAttribute();
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      entities: prev.entities.map(entity =>
+      entities: prev.entities.map((entity) =>
         entity.id === selectedEntity.id
           ? { ...entity, attributes: [...entity.attributes, attr] }
-          : entity
-      )
+          : entity,
+      ),
     }));
   };
 
   const updateEntity = (updates) => {
     if (!selectedEntity) return;
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      entities: prev.entities.map(entity =>
-        entity.id === selectedEntity.id ? { ...entity, ...updates } : entity
-      )
+      entities: prev.entities.map((entity) =>
+        entity.id === selectedEntity.id ? { ...entity, ...updates } : entity,
+      ),
     }));
   };
 
   const updateAttribute = (attrId, updates) => {
     if (!selectedEntity) return;
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      entities: prev.entities.map(entity => {
+      entities: prev.entities.map((entity) => {
         if (entity.id !== selectedEntity.id) return entity;
         return {
           ...entity,
-          attributes: entity.attributes.map(attr =>
-            attr.id === attrId ? { ...attr, ...updates } : attr
-          )
+          attributes: entity.attributes.map((attr) =>
+            attr.id === attrId ? { ...attr, ...updates } : attr,
+          ),
         };
-      })
+      }),
     }));
   };
 
   const deleteAttribute = (attrId) => {
     if (!selectedEntity) return;
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      entities: prev.entities.map(entity => {
+      entities: prev.entities.map((entity) => {
         if (entity.id !== selectedEntity.id) return entity;
         return {
           ...entity,
-          attributes: entity.attributes.filter(attr => attr.id !== attrId)
+          attributes: entity.attributes.filter((attr) => attr.id !== attrId),
         };
-      })
+      }),
     }));
   };
 
@@ -238,12 +316,12 @@ function App() {
     if (!selectedEntity) return;
     setLinkMode(true);
     setLinkFrom(selectedEntity.id);
-    setStatus('Pick the target entity.');
+    setStatus("Pick the target entity.");
   };
 
   const completeLink = (targetId) => {
     if (!linkMode || !linkFrom || linkFrom === targetId) return;
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
       relationships: [
         ...prev.relationships,
@@ -251,35 +329,35 @@ function App() {
           id: crypto.randomUUID(),
           from: linkFrom,
           to: targetId,
-          type: '1:N',
-          label: 'relates_to'
-        }
-      ]
+          type: "1:N",
+          label: "relates_to",
+        },
+      ],
     }));
     setLinkMode(false);
     setLinkFrom(null);
-    setStatus('Relationship created.');
+    setStatus("Relationship created.");
   };
 
   const cancelLink = () => {
     setLinkMode(false);
     setLinkFrom(null);
-    setStatus('Link canceled.');
+    setStatus("Link canceled.");
   };
 
   const updateRelationship = (relId, updates) => {
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      relationships: prev.relationships.map(rel =>
-        rel.id === relId ? { ...rel, ...updates } : rel
-      )
+      relationships: prev.relationships.map((rel) =>
+        rel.id === relId ? { ...rel, ...updates } : rel,
+      ),
     }));
   };
 
   const deleteRelationship = (relId) => {
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
-      relationships: prev.relationships.filter(rel => rel.id !== relId)
+      relationships: prev.relationships.filter((rel) => rel.id !== relId),
     }));
     if (selectedRelId === relId) {
       setSelectedRelId(null);
@@ -289,90 +367,94 @@ function App() {
   const exportJson = () => {
     const payload = JSON.stringify(model, null, 2);
     setJsonDraft(payload);
-    setStatus('Model exported to JSON box.');
+    setStatus("Model exported to JSON box.");
   };
 
   const importJson = () => {
     try {
       const parsed = JSON.parse(jsonDraft);
       if (!parsed.entities || !parsed.relationships) {
-        setStatus('Invalid JSON: missing entities or relationships.');
+        setStatus("Invalid JSON: missing entities or relationships.");
         return;
       }
       setModel(parsed);
       setSelectedEntityId(null);
-      setStatus('Model imported.');
+      setStatus("Model imported.");
     } catch (err) {
-      setStatus('Invalid JSON format.');
+      setStatus("Invalid JSON format.");
     }
   };
 
   const ddl = useMemo(() => {
-    const tableDdls = model.entities.map(entity => {
-      const columns = entity.attributes.map(attr => {
-        const type = attr.type || 'text';
-        const pk = attr.isPrimary ? ' PRIMARY KEY' : '';
-        const nullable = attr.isNullable ? '' : ' NOT NULL';
+    const tableDdls = model.entities.map((entity) => {
+      const columns = entity.attributes.map((attr) => {
+        const type = attr.type || "text";
+        const pk = attr.isPrimary ? " PRIMARY KEY" : "";
+        const nullable = attr.isNullable ? "" : " NOT NULL";
         return `  ${attr.name} ${type}${nullable}${pk}`;
       });
-      return `CREATE TABLE ${entity.name} (\n${columns.join(',\n')}\n);`;
+      return `CREATE TABLE ${entity.name} (\n${columns.join(",\n")}\n);`;
     });
 
-    const relDdls = model.relationships.map(rel => {
-      const from = relationshipLookup.get(rel.from);
-      const to = relationshipLookup.get(rel.to);
-      if (!from || !to) return '';
-      const fromPk = from.attributes.find(attr => attr.isPrimary) || from.attributes[0];
-      if (!fromPk) return '';
-      const fkColumn = `${from.name}_${fromPk.name}`;
-
-      if (rel.type === 'N:N') {
-        const joinTable = `${from.name}_${to.name}`;
-        return `CREATE TABLE ${joinTable} (\n  ${from.name}_${fromPk.name} ${fromPk.type} NOT NULL,\n  ${to.name}_${fromPk.name} ${fromPk.type} NOT NULL\n);\nALTER TABLE ${joinTable} ADD CONSTRAINT fk_${joinTable}_${from.name} FOREIGN KEY (${from.name}_${fromPk.name}) REFERENCES ${from.name}(${fromPk.name});\nALTER TABLE ${joinTable} ADD CONSTRAINT fk_${joinTable}_${to.name} FOREIGN KEY (${to.name}_${fromPk.name}) REFERENCES ${to.name}(${fromPk.name});`;
-      }
-
-      const target = rel.type === '1:N' ? to : from;
-      const source = rel.type === '1:N' ? from : to;
-      return `ALTER TABLE ${target.name} ADD COLUMN ${fkColumn} ${fromPk.type};\nALTER TABLE ${target.name} ADD CONSTRAINT fk_${target.name}_${source.name} FOREIGN KEY (${fkColumn}) REFERENCES ${source.name}(${fromPk.name});`;
-    }).filter(Boolean);
-
-    return [...tableDdls, ...relDdls].join('\n\n');
-  }, [model]);
-
-  const entityDdl = (entity) => {
-    if (!entity) return '';
-    const columns = entity.attributes.map(attr => {
-      const type = attr.type || 'text';
-      const pk = attr.isPrimary ? ' PRIMARY KEY' : '';
-      const nullable = attr.isNullable ? '' : ' NOT NULL';
-      return `  ${attr.name} ${type}${nullable}${pk}`;
-    });
-
-    const fkLines = model.relationships
-      .filter(rel => rel.from === entity.id || rel.to === entity.id)
-      .map(rel => {
+    const relDdls = model.relationships
+      .map((rel) => {
         const from = relationshipLookup.get(rel.from);
         const to = relationshipLookup.get(rel.to);
-        if (!from || !to) return '';
-        const fromPk = from.attributes.find(attr => attr.isPrimary) || from.attributes[0];
-        if (!fromPk) return '';
+        if (!from || !to) return "";
+        const fromPk =
+          from.attributes.find((attr) => attr.isPrimary) || from.attributes[0];
+        if (!fromPk) return "";
         const fkColumn = `${from.name}_${fromPk.name}`;
-        if (rel.type === 'N:N') {
+
+        if (rel.type === "N:N") {
           const joinTable = `${from.name}_${to.name}`;
-          return `-- join table\nCREATE TABLE ${joinTable} (\n  ${from.name}_${fromPk.name} ${fromPk.type} NOT NULL,\n  ${to.name}_${fromPk.name} ${fromPk.type} NOT NULL\n);`;
+          return `CREATE TABLE ${joinTable} (\n  ${from.name}_${fromPk.name} ${fromPk.type} NOT NULL,\n  ${to.name}_${fromPk.name} ${fromPk.type} NOT NULL\n);\nALTER TABLE ${joinTable} ADD CONSTRAINT fk_${joinTable}_${from.name} FOREIGN KEY (${from.name}_${fromPk.name}) REFERENCES ${from.name}(${fromPk.name});\nALTER TABLE ${joinTable} ADD CONSTRAINT fk_${joinTable}_${to.name} FOREIGN KEY (${to.name}_${fromPk.name}) REFERENCES ${to.name}(${fromPk.name});`;
         }
-        const target = rel.type === '1:N' ? to : from;
-        const source = rel.type === '1:N' ? from : to;
-        if (target.id !== entity.id) return '';
+
+        const target = rel.type === "1:N" ? to : from;
+        const source = rel.type === "1:N" ? from : to;
         return `ALTER TABLE ${target.name} ADD COLUMN ${fkColumn} ${fromPk.type};\nALTER TABLE ${target.name} ADD CONSTRAINT fk_${target.name}_${source.name} FOREIGN KEY (${fkColumn}) REFERENCES ${source.name}(${fromPk.name});`;
       })
       .filter(Boolean);
 
-    return `CREATE TABLE ${entity.name} (\n${columns.join(',\n')}\n);\n\n${fkLines.join('\n\n')}`.trim();
+    return [...tableDdls, ...relDdls].join("\n\n");
+  }, [model]);
+
+  const entityDdl = (entity) => {
+    if (!entity) return "";
+    const columns = entity.attributes.map((attr) => {
+      const type = attr.type || "text";
+      const pk = attr.isPrimary ? " PRIMARY KEY" : "";
+      const nullable = attr.isNullable ? "" : " NOT NULL";
+      return `  ${attr.name} ${type}${nullable}${pk}`;
+    });
+
+    const fkLines = model.relationships
+      .filter((rel) => rel.from === entity.id || rel.to === entity.id)
+      .map((rel) => {
+        const from = relationshipLookup.get(rel.from);
+        const to = relationshipLookup.get(rel.to);
+        if (!from || !to) return "";
+        const fromPk =
+          from.attributes.find((attr) => attr.isPrimary) || from.attributes[0];
+        if (!fromPk) return "";
+        const fkColumn = `${from.name}_${fromPk.name}`;
+        if (rel.type === "N:N") {
+          const joinTable = `${from.name}_${to.name}`;
+          return `-- join table\nCREATE TABLE ${joinTable} (\n  ${from.name}_${fromPk.name} ${fromPk.type} NOT NULL,\n  ${to.name}_${fromPk.name} ${fromPk.type} NOT NULL\n);`;
+        }
+        const target = rel.type === "1:N" ? to : from;
+        const source = rel.type === "1:N" ? from : to;
+        if (target.id !== entity.id) return "";
+        return `ALTER TABLE ${target.name} ADD COLUMN ${fkColumn} ${fromPk.type};\nALTER TABLE ${target.name} ADD CONSTRAINT fk_${target.name}_${source.name} FOREIGN KEY (${fkColumn}) REFERENCES ${source.name}(${fromPk.name});`;
+      })
+      .filter(Boolean);
+
+    return `CREATE TABLE ${entity.name} (\n${columns.join(",\n")}\n);\n\n${fkLines.join("\n\n")}`.trim();
   };
 
   const zoomBy = (factor) => {
-    setViewport(prev => {
+    setViewport((prev) => {
       const nextScale = Math.min(2, Math.max(0.5, prev.scale * factor));
       return { ...prev, scale: nextScale };
     });
@@ -386,13 +468,13 @@ function App() {
     const columns = 3;
     const gapX = 260;
     const gapY = 220;
-    setModel(prev => ({
+    setModel((prev) => ({
       ...prev,
       entities: prev.entities.map((entity, index) => ({
         ...entity,
         x: 100 + (index % columns) * gapX,
-        y: 80 + Math.floor(index / columns) * gapY
-      }))
+        y: 80 + Math.floor(index / columns) * gapY,
+      })),
     }));
   };
 
@@ -406,7 +488,7 @@ function App() {
     const worldX = (pointerX - viewport.x) / viewport.scale;
     const worldY = (pointerY - viewport.y) / viewport.scale;
     const scaleFactor = event.deltaY < 0 ? 1.1 : 0.9;
-    setViewport(prev => {
+    setViewport((prev) => {
       const nextScale = Math.min(2, Math.max(0.5, prev.scale * scaleFactor));
       const nextX = pointerX - worldX * nextScale;
       const nextY = pointerY - worldY * nextScale;
@@ -415,39 +497,65 @@ function App() {
   };
 
   const handleCanvasMouseDown = (event) => {
-    if (event.target.closest('.entity')) return;
+    if (event.target.closest(".entity")) return;
     if (!(spaceDown || event.button === 1 || event.button === 2)) return;
     setIsPanning(true);
     panRef.current = {
       x: event.clientX,
       y: event.clientY,
       startX: viewport.x,
-      startY: viewport.y
+      startY: viewport.y,
     };
+  };
+
+  const handleResizeMouseDown = (event, entity) => {
+    event.stopPropagation();
+    const board = boardRef.current;
+    if (!board) return;
+    const rect = board.getBoundingClientRect();
+    const startX = (event.clientX - rect.left - viewport.x) / viewport.scale;
+    const startY = (event.clientY - rect.top - viewport.y) / viewport.scale;
+    resizeRef.current = {
+      id: entity.id,
+      startX,
+      startY,
+      startWidth: entity.width ?? ENTITY_WIDTH,
+      startHeight: getEntityHeight(entity),
+    };
+    setIsResizing(true);
+    setSelectedEntityId(entity.id);
   };
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.code === 'Space') {
+      if (event.code === "Space") {
         setSpaceDown(true);
       }
     };
     const handleKeyUp = (event) => {
-      if (event.code === 'Space') {
+      if (event.code === "Space") {
         setSpaceDown(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 
+  const getEntityMinHeight = (entity) => {
+    return HEADER_HEIGHT + entity.attributes.length * ROW_HEIGHT + 16;
+  };
+
+  const getEntityHeight = (entity) => {
+    return Math.max(entity.height || 0, getEntityMinHeight(entity), RESIZE_MIN_H);
+  };
+
   const getAttrY = (entity, attrId) => {
     if (!attrId) return entity.y + HEADER_HEIGHT / 2;
-    const index = entity.attributes.findIndex(attr => attr.id === attrId);
+    const index = entity.attributes.findIndex((attr) => attr.id === attrId);
     if (index === -1) return entity.y + HEADER_HEIGHT / 2;
     return entity.y + HEADER_HEIGHT + index * ROW_HEIGHT + ROW_HEIGHT / 2;
   };
@@ -469,11 +577,20 @@ function App() {
           <h2>Project</h2>
           <div className="toolbar">
             <button onClick={addEntity}>Add Entity</button>
-            <button className="secondary" onClick={exportJson}>Export JSON</button>
-            <button className="secondary" onClick={() => setJsonDraft('')}>Clear JSON</button>
-            <button className="secondary" onClick={autoLayout}>Auto-layout</button>
-            <button className="secondary" onClick={() => setGuidesOn(prev => !prev)}>
-              {guidesOn ? 'Guides On' : 'Guides Off'}
+            <button className="secondary" onClick={exportJson}>
+              Export JSON
+            </button>
+            <button className="secondary" onClick={() => setJsonDraft("")}>
+              Clear JSON
+            </button>
+            <button className="secondary" onClick={autoLayout}>
+              Auto-layout
+            </button>
+            <button
+              className="secondary"
+              onClick={() => setGuidesOn((prev) => !prev)}
+            >
+              {guidesOn ? "Guides On" : "Guides Off"}
             </button>
           </div>
           <div className="divider"></div>
@@ -481,10 +598,12 @@ function App() {
             <label>Import / Export JSON</label>
             <textarea
               value={jsonDraft}
-              onChange={event => setJsonDraft(event.target.value)}
+              onChange={(event) => setJsonDraft(event.target.value)}
               placeholder="Paste JSON here"
             />
-            <button className="secondary" onClick={importJson}>Import JSON</button>
+            <button className="secondary" onClick={importJson}>
+              Import JSON
+            </button>
           </div>
         </div>
 
@@ -499,9 +618,13 @@ function App() {
         ref={boardRef}
         onWheel={handleWheel}
         onMouseDown={handleCanvasMouseDown}
-        onContextMenu={event => event.preventDefault()}
+        onContextMenu={(event) => event.preventDefault()}
         onClick={(event) => {
-          if (event.target.closest('.rel-line') || event.target.closest('.rel-hit') || event.target.closest('.rel-delete')) {
+          if (
+            event.target.closest(".rel-line") ||
+            event.target.closest(".rel-hit") ||
+            event.target.closest(".rel-delete")
+          ) {
             return;
           }
           setSelectedRelId(null);
@@ -510,14 +633,16 @@ function App() {
         <div className="canvas-grid"></div>
         <div
           className="viewport"
-          style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}
+          style={{
+            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+          }}
         >
           <svg width="100%" height="100%">
-            {model.relationships.map(rel => {
+            {model.relationships.map((rel) => {
               const from = relationshipLookup.get(rel.from);
               const to = relationshipLookup.get(rel.to);
               if (!from || !to) return null;
-              const startX = from.x + ENTITY_WIDTH;
+              const startX = from.x + (from.width ?? ENTITY_WIDTH);
               const startY = getAttrY(from, rel.fromAttr);
               const endX = to.x;
               const endY = getAttrY(to, rel.toAttr);
@@ -553,8 +678,16 @@ function App() {
                         deleteRelationship(rel.id);
                       }}
                     >
-                      <rect x={midX - 10} y={midY - 22} width="20" height="20" rx="6" />
-                      <text x={midX} y={midY - 8}>×</text>
+                      <rect
+                        x={midX - 10}
+                        y={midY - 22}
+                        width="20"
+                        height="20"
+                        rx="6"
+                      />
+                      <text x={midX} y={midY - 8}>
+                        ×
+                      </text>
                     </g>
                   )}
                 </g>
@@ -562,12 +695,17 @@ function App() {
             })}
           </svg>
 
-          {model.entities.map(entity => (
+          {model.entities.map((entity) => (
             <div
               key={entity.id}
-              className={`entity ${selectedEntityId === entity.id ? 'selected' : ''}`}
-              style={{ left: entity.x, top: entity.y }}
-              onMouseDown={event => handleMouseDown(event, entity.id)}
+              className={`entity ${selectedEntityId === entity.id ? "selected" : ""}`}
+              style={{
+                left: entity.x,
+                top: entity.y,
+                width: entity.width ?? ENTITY_WIDTH,
+                height: getEntityHeight(entity),
+              }}
+              onMouseDown={(event) => handleMouseDown(event, entity.id)}
               onClick={() => {
                 setSelectedEntityId(entity.id);
                 setSelectedRelId(null);
@@ -581,7 +719,7 @@ function App() {
                 <span>{entity.name}</span>
                 <button
                   title="Delete entity"
-                  onClick={event => {
+                  onClick={(event) => {
                     event.stopPropagation();
                     deleteEntity(entity.id);
                   }}
@@ -590,13 +728,20 @@ function App() {
                 </button>
               </header>
               <ul>
-                {entity.attributes.map(attr => (
+                {entity.attributes.map((attr) => (
                   <li key={attr.id}>
-                    <span className="badge">{attr.isPrimary ? 'PK' : 'COL'}</span>
+                    <span className="badge">
+                      {attr.isPrimary ? "PK" : "COL"}
+                    </span>
                     {attr.name} : {attr.type}
                   </li>
                 ))}
               </ul>
+              <span
+                className="resize-handle"
+                onMouseDown={(event) => handleResizeMouseDown(event, entity)}
+                title="Drag to resize"
+              ></span>
             </div>
           ))}
         </div>
@@ -604,10 +749,18 @@ function App() {
         {guidesOn && (guides.x.length > 0 || guides.y.length > 0) && (
           <div className="guides">
             {guides.x.map((x, index) => (
-              <span key={`gx-${index}`} className="guide-line x" style={{ left: x * viewport.scale + viewport.x }} />
+              <span
+                key={`gx-${index}`}
+                className="guide-line x"
+                style={{ left: x * viewport.scale + viewport.x }}
+              />
             ))}
             {guides.y.map((y, index) => (
-              <span key={`gy-${index}`} className="guide-line y" style={{ top: y * viewport.scale + viewport.y }} />
+              <span
+                key={`gy-${index}`}
+                className="guide-line y"
+                style={{ top: y * viewport.scale + viewport.y }}
+              />
             ))}
           </div>
         )}
@@ -622,42 +775,71 @@ function App() {
                 <label>Name</label>
                 <input
                   value={selectedEntity.name}
-                  onChange={event => updateEntity({ name: event.target.value })}
+                  onChange={(event) =>
+                    updateEntity({ name: event.target.value })
+                  }
                 />
               </div>
 
               <div className="toolbar">
-                <button className="secondary" onClick={addAttribute}>Add Attribute</button>
-                <button className="secondary" onClick={startLink}>Link</button>
-                <button className="danger" onClick={() => deleteEntity(selectedEntity.id)}>Delete</button>
+                <button className="secondary" onClick={addAttribute}>
+                  Add Attribute
+                </button>
+                <button className="secondary" onClick={startLink}>
+                  Link
+                </button>
+                <button
+                  className="danger"
+                  onClick={() => deleteEntity(selectedEntity.id)}
+                >
+                  Delete
+                </button>
               </div>
               {linkMode && (
-                <p>Link mode active: pick a target entity or <button className="secondary" onClick={cancelLink}>cancel</button>.</p>
+                <p>
+                  Link mode active: pick a target entity or{" "}
+                  <button className="secondary" onClick={cancelLink}>
+                    cancel
+                  </button>
+                  .
+                </p>
               )}
 
               <div className="divider"></div>
 
-              {selectedEntity.attributes.map(attr => (
-                <div key={attr.id} className="card" style={{ marginBottom: '10px' }}>
+              {selectedEntity.attributes.map((attr) => (
+                <div
+                  key={attr.id}
+                  className="card"
+                  style={{ marginBottom: "10px" }}
+                >
                   <div className="field">
                     <label>Attribute</label>
                     <input
                       value={attr.name}
-                      onChange={event => updateAttribute(attr.id, { name: event.target.value })}
+                      onChange={(event) =>
+                        updateAttribute(attr.id, { name: event.target.value })
+                      }
                     />
                   </div>
                   <div className="field">
                     <label>Type</label>
                     <input
                       value={attr.type}
-                      onChange={event => updateAttribute(attr.id, { type: event.target.value })}
+                      onChange={(event) =>
+                        updateAttribute(attr.id, { type: event.target.value })
+                      }
                     />
                   </div>
                   <div className="field">
                     <label>Primary Key</label>
                     <select
-                      value={attr.isPrimary ? 'yes' : 'no'}
-                      onChange={event => updateAttribute(attr.id, { isPrimary: event.target.value === 'yes' })}
+                      value={attr.isPrimary ? "yes" : "no"}
+                      onChange={(event) =>
+                        updateAttribute(attr.id, {
+                          isPrimary: event.target.value === "yes",
+                        })
+                      }
                     >
                       <option value="yes">Yes</option>
                       <option value="no">No</option>
@@ -666,14 +848,23 @@ function App() {
                   <div className="field">
                     <label>Nullable</label>
                     <select
-                      value={attr.isNullable ? 'yes' : 'no'}
-                      onChange={event => updateAttribute(attr.id, { isNullable: event.target.value === 'yes' })}
+                      value={attr.isNullable ? "yes" : "no"}
+                      onChange={(event) =>
+                        updateAttribute(attr.id, {
+                          isNullable: event.target.value === "yes",
+                        })
+                      }
                     >
                       <option value="yes">Yes</option>
                       <option value="no">No</option>
                     </select>
                   </div>
-                  <button className="danger" onClick={() => deleteAttribute(attr.id)}>Delete Attribute</button>
+                  <button
+                    className="danger"
+                    onClick={() => deleteAttribute(attr.id)}
+                  >
+                    Delete Attribute
+                  </button>
                 </div>
               ))}
             </>
@@ -685,55 +876,83 @@ function App() {
         <div className="card">
           <h2>Relationships</h2>
           <div className="relationships">
-            {model.relationships.map(rel => {
+            {model.relationships.map((rel) => {
               const from = relationshipLookup.get(rel.from);
               const to = relationshipLookup.get(rel.to);
               return (
                 <div key={rel.id} className="item">
-                  <div><strong>{from ? from.name : 'Unknown'}</strong> → <strong>{to ? to.name : 'Unknown'}</strong></div>
-                  <div className="field" style={{ marginTop: '8px' }}>
+                  <div>
+                    <strong>{from ? from.name : "Unknown"}</strong> →{" "}
+                    <strong>{to ? to.name : "Unknown"}</strong>
+                  </div>
+                  <div className="field" style={{ marginTop: "8px" }}>
                     <label>Label</label>
                     <input
                       value={rel.label}
-                      onChange={event => updateRelationship(rel.id, { label: event.target.value })}
+                      onChange={(event) =>
+                        updateRelationship(rel.id, {
+                          label: event.target.value,
+                        })
+                      }
                     />
                   </div>
                   <div className="field">
                     <label>From Attribute</label>
                     <select
-                      value={rel.fromAttr || ''}
-                      onChange={event => updateRelationship(rel.id, { fromAttr: event.target.value || null })}
+                      value={rel.fromAttr || ""}
+                      onChange={(event) =>
+                        updateRelationship(rel.id, {
+                          fromAttr: event.target.value || null,
+                        })
+                      }
                     >
                       <option value="">Entity header</option>
-                      {from && from.attributes.map(attr => (
-                        <option key={attr.id} value={attr.id}>{attr.name}</option>
-                      ))}
+                      {from &&
+                        from.attributes.map((attr) => (
+                          <option key={attr.id} value={attr.id}>
+                            {attr.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
                   <div className="field">
                     <label>To Attribute</label>
                     <select
-                      value={rel.toAttr || ''}
-                      onChange={event => updateRelationship(rel.id, { toAttr: event.target.value || null })}
+                      value={rel.toAttr || ""}
+                      onChange={(event) =>
+                        updateRelationship(rel.id, {
+                          toAttr: event.target.value || null,
+                        })
+                      }
                     >
                       <option value="">Entity header</option>
-                      {to && to.attributes.map(attr => (
-                        <option key={attr.id} value={attr.id}>{attr.name}</option>
-                      ))}
+                      {to &&
+                        to.attributes.map((attr) => (
+                          <option key={attr.id} value={attr.id}>
+                            {attr.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
                   <div className="field">
                     <label>Cardinality</label>
                     <select
                       value={rel.type}
-                      onChange={event => updateRelationship(rel.id, { type: event.target.value })}
+                      onChange={(event) =>
+                        updateRelationship(rel.id, { type: event.target.value })
+                      }
                     >
                       <option value="1:1">1:1</option>
                       <option value="1:N">1:N</option>
                       <option value="N:N">N:N</option>
                     </select>
                   </div>
-                  <button className="danger" onClick={() => deleteRelationship(rel.id)}>Delete</button>
+                  <button
+                    className="danger"
+                    onClick={() => deleteRelationship(rel.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               );
             })}
@@ -745,9 +964,15 @@ function App() {
           <h2>Status</h2>
           <p>{status}</p>
           <div className="toolbar">
-            <button className="secondary" onClick={() => zoomBy(1.1)}>Zoom In</button>
-            <button className="secondary" onClick={() => zoomBy(0.9)}>Zoom Out</button>
-            <button className="secondary" onClick={resetViewport}>Reset View</button>
+            <button className="secondary" onClick={() => zoomBy(1.1)}>
+              Zoom In
+            </button>
+            <button className="secondary" onClick={() => zoomBy(0.9)}>
+              Zoom Out
+            </button>
+            <button className="secondary" onClick={resetViewport}>
+              Reset View
+            </button>
           </div>
           <p>Tip: hold Space and drag to pan. Use mouse wheel to zoom.</p>
         </div>
@@ -755,12 +980,20 @@ function App() {
 
       {ddlEntityId && (
         <div className="modal-backdrop" onClick={() => setDdlEntityId(null)}>
-          <div className="modal" onClick={event => event.stopPropagation()}>
+          <div className="modal" onClick={(event) => event.stopPropagation()}>
             <header>
               <h3>DDL for {relationshipLookup.get(ddlEntityId)?.name}</h3>
-              <button className="secondary" onClick={() => setDdlEntityId(null)}>Close</button>
+              <button
+                className="secondary"
+                onClick={() => setDdlEntityId(null)}
+              >
+                Close
+              </button>
             </header>
-            <textarea readOnly value={entityDdl(relationshipLookup.get(ddlEntityId))} />
+            <textarea
+              readOnly
+              value={entityDdl(relationshipLookup.get(ddlEntityId))}
+            />
           </div>
         </div>
       )}
@@ -768,5 +1001,5 @@ function App() {
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
