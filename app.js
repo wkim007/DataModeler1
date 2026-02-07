@@ -60,6 +60,31 @@ const defaultModel = () => ({
 
 function App() {
   const API_BASE = "http://localhost:3001";
+  const PG_TYPES = [
+    "smallint",
+    "integer",
+    "bigint",
+    "serial",
+    "bigserial",
+    "numeric",
+    "decimal",
+    "real",
+    "double precision",
+    "money",
+    "varchar",
+    "text",
+    "char",
+    "boolean",
+    "date",
+    "time",
+    "timestamp",
+    "timestamptz",
+    "interval",
+    "uuid",
+    "json",
+    "jsonb",
+    "bytea",
+  ];
   const [model, setModel] = useState(() => {
     const model = defaultModel();
     model.relationships[0].from = model.entities[0].id;
@@ -900,12 +925,18 @@ function App() {
                       <>
                         <div className="field">
                           <label>Type</label>
-                          <input
+                          <select
                             value={attr.type}
                             onChange={(event) =>
                               updateAttribute(attr.id, { type: event.target.value })
                             }
-                          />
+                          >
+                            {PG_TYPES.map((type) => (
+                              <option key={type} value={type}>
+                                {type}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="field">
                           <label>Primary Key</label>
