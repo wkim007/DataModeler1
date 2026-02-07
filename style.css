@@ -349,6 +349,18 @@ textarea {
   max-height: 520px;
 }
 
+.json-view {
+  min-height: 420px;
+  background: #0b1118;
+  color: #d0d6dd;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .sql-keyword {
   color: #6cb4ff;
   font-weight: 600;
@@ -401,6 +413,22 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: #1e2630;
+  color: var(--ink);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
 }
 
 .modal textarea {

@@ -286,6 +286,7 @@ function App() {
   const [toast, setToast] = useState("");
   const [selectedAttrId, setSelectedAttrId] = useState(null);
   const [ddlOpen, setDdlOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
 
   const boardRef = useRef(null);
   const dragRef = useRef({ id: null, offsetX: 0, offsetY: 0 });
@@ -660,6 +661,17 @@ function App() {
     }
   };
 
+  const copyJsonToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(jsonDraft || "");
+      setToast("JSON copied to clipboard");
+      setTimeout(() => setToast(""), 2000);
+    } catch (err) {
+      setToast("Copy failed. Try manually.");
+      setTimeout(() => setToast(""), 2000);
+    }
+  };
+
   const ddl = useMemo(() => {
     const tableDdls = model.entities.map((entity) => {
       const columns = entity.attributes.map((attr) => {
@@ -953,9 +965,14 @@ function App() {
               onChange={(event) => setJsonDraft(event.target.value)}
               placeholder="Paste JSON here"
             />
-            <button className="secondary" onClick={importJson}>
-              Import JSON
-            </button>
+            <div className="toolbar">
+              <button className="secondary" onClick={importJson}>
+                Import JSON
+              </button>
+              <button className="secondary" onClick={() => setJsonOpen(true)}>
+                View JSON
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1454,6 +1471,37 @@ function App() {
                 }}
               />
             </pre>
+          </div>
+        </div>
+      )}
+
+      {jsonOpen && (
+        <div className="modal-backdrop">
+          <div
+            className="modal modal-wide"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <h3>Model JSON</h3>
+              <div className="toolbar">
+                <button
+                  className="icon-button"
+                  title="Copy JSON"
+                  onClick={copyJsonToClipboard}
+                >
+                  ⧉
+                </button>
+                <button className="secondary" onClick={() => setJsonOpen(false)}>
+                  Close
+                </button>
+              </div>
+            </header>
+            <textarea
+              className="json-view"
+              value={jsonDraft}
+              onChange={(event) => setJsonDraft(event.target.value)}
+              placeholder="Paste JSON here"
+            />
           </div>
         </div>
       )}
