@@ -60,6 +60,12 @@ const defaultModel = () => ({
 
 function App() {
   const API_BASE = "http://localhost:3001";
+  const DATABASES = [
+    { id: "oracle", label: "Oracle" },
+    { id: "mssql", label: "MS SQL Server" },
+    { id: "postgresql", label: "PostgreSQL" },
+    { id: "databricks", label: "Databricks (Spark SQL)" },
+  ];
   const PG_TYPES = [
     "smallint",
     "integer",
@@ -85,6 +91,177 @@ function App() {
     "jsonb",
     "bytea",
   ];
+  const DBX_TYPES = [
+    "tinyint",
+    "int",
+    "bigint",
+    "float",
+    "double",
+    "decimal",
+    "boolean",
+    "string",
+    "binary",
+    "date",
+    "timestamp",
+    "array",
+    "map",
+    "struct",
+  ];
+  const ORACLE_TYPES = [
+    "number",
+    "varchar2",
+    "nvarchar2",
+    "char",
+    "nchar",
+    "date",
+    "timestamp",
+    "timestamp with time zone",
+    "clob",
+    "blob",
+    "raw",
+    "long",
+    "float",
+  ];
+  const MSSQL_TYPES = [
+    "tinyint",
+    "smallint",
+    "int",
+    "bigint",
+    "decimal",
+    "numeric",
+    "money",
+    "float",
+    "real",
+    "bit",
+    "char",
+    "varchar",
+    "nvarchar",
+    "text",
+    "ntext",
+    "date",
+    "datetime",
+    "datetime2",
+    "datetimeoffset",
+    "time",
+    "uniqueidentifier",
+    "binary",
+    "varbinary",
+  ];
+  const DB_TYPE_MAP = {
+    oracle: {
+      list: ORACLE_TYPES,
+      fallback: "varchar2",
+      aliases: {
+        smallint: "number",
+        integer: "number",
+        int: "number",
+        bigint: "number",
+        serial: "number",
+        bigserial: "number",
+        numeric: "number",
+        decimal: "number",
+        real: "float",
+        "double precision": "float",
+        money: "number",
+        varchar: "varchar2",
+        text: "clob",
+        boolean: "number",
+        date: "date",
+        time: "date",
+        timestamp: "timestamp",
+        timestamptz: "timestamp with time zone",
+        interval: "varchar2",
+        uuid: "raw",
+        json: "clob",
+        jsonb: "clob",
+        bytea: "blob",
+      },
+    },
+    mssql: {
+      list: MSSQL_TYPES,
+      fallback: "varchar",
+      aliases: {
+        smallint: "smallint",
+        integer: "int",
+        int: "int",
+        bigint: "bigint",
+        serial: "int",
+        bigserial: "bigint",
+        numeric: "numeric",
+        decimal: "decimal",
+        real: "real",
+        "double precision": "float",
+        money: "money",
+        varchar: "varchar",
+        text: "text",
+        char: "char",
+        boolean: "bit",
+        date: "date",
+        time: "time",
+        timestamp: "datetime2",
+        timestamptz: "datetimeoffset",
+        interval: "varchar",
+        uuid: "uniqueidentifier",
+        json: "nvarchar",
+        jsonb: "nvarchar",
+        bytea: "varbinary",
+      },
+    },
+    postgresql: {
+      list: PG_TYPES,
+      fallback: "text",
+      aliases: {
+        int: "integer",
+        long: "bigint",
+        string: "text",
+        bool: "boolean",
+        double: "double precision",
+        float: "real",
+        timestamp: "timestamp",
+        date: "date",
+        uniqueidentifier: "uuid",
+        datetime2: "timestamp",
+        datetime: "timestamp",
+        datetimeoffset: "timestamptz",
+        nvarchar: "text",
+        ntext: "text",
+        varchar2: "varchar",
+        number: "numeric",
+        clob: "text",
+        blob: "bytea",
+      },
+    },
+    databricks: {
+      list: DBX_TYPES,
+      fallback: "string",
+      aliases: {
+        smallint: "int",
+        integer: "int",
+        int: "int",
+        bigint: "bigint",
+        serial: "int",
+        bigserial: "bigint",
+        numeric: "decimal",
+        decimal: "decimal",
+        real: "float",
+        "double precision": "double",
+        money: "decimal",
+        varchar: "string",
+        text: "string",
+        char: "string",
+        boolean: "boolean",
+        date: "date",
+        time: "string",
+        timestamp: "timestamp",
+        timestamptz: "timestamp",
+        interval: "string",
+        uuid: "string",
+        json: "string",
+        jsonb: "string",
+        bytea: "binary",
+      },
+    },
+  };
   const [model, setModel] = useState(() => {
     const model = defaultModel();
     model.relationships[0].from = model.entities[0].id;
@@ -96,6 +273,7 @@ function App() {
   const [linkFrom, setLinkFrom] = useState(null);
   const [jsonDraft, setJsonDraft] = useState("");
   const [status, setStatus] = useState("Ready.");
+  const [dbEngine, setDbEngine] = useState("postgresql");
   const [viewMode, setViewMode] = useState("physical");
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [guides, setGuides] = useState({ x: [], y: [] });
@@ -119,6 +297,30 @@ function App() {
     startHeight: 0,
   });
 
+  const convertType = (type, target) => {
+    const config = DB_TYPE_MAP[target];
+    if (!config) return type;
+    if (config.list.includes(type)) return type;
+    const mapped = config.aliases[type];
+    if (mapped && config.list.includes(mapped)) return mapped;
+    return config.fallback;
+  };
+
+  const convertModelTypesForModel = (inputModel, nextDb) => ({
+    ...inputModel,
+    entities: inputModel.entities.map((entity) => ({
+      ...entity,
+      attributes: entity.attributes.map((attr) => ({
+        ...attr,
+        type: convertType(attr.type, nextDb),
+      })),
+    })),
+  });
+
+  const convertModelTypes = (nextDb) => {
+    setModel((prev) => convertModelTypesForModel(prev, nextDb));
+  };
+
   useEffect(() => {
     const loadLatest = async () => {
       try {
@@ -126,7 +328,8 @@ function App() {
         if (!res.ok) return;
         const data = await res.json();
         if (data) {
-          setModel(data);
+          const normalized = convertModelTypesForModel(data, dbEngine);
+          setModel(normalized);
           setStatus("Loaded latest model from MongoDB.");
         }
       } catch (err) {
@@ -135,6 +338,10 @@ function App() {
     };
     loadLatest();
   }, []);
+
+  useEffect(() => {
+    convertModelTypes(dbEngine);
+  }, [dbEngine]);
 
   const selectedEntity =
     model.entities.find((e) => e.id === selectedEntityId) || null;
@@ -480,12 +687,15 @@ function App() {
 
         const target = rel.type === "1:N" ? to : from;
         const source = rel.type === "1:N" ? from : to;
+        if (dbEngine === "databricks") {
+          return `ALTER TABLE ${target.name} ADD COLUMNS (${fkColumn} ${fromPk.type});\nALTER TABLE ${target.name} ADD CONSTRAINT fk_${target.name}_${source.name} FOREIGN KEY (${fkColumn}) REFERENCES ${source.name}(${fromPk.name});`;
+        }
         return `ALTER TABLE ${target.name} ADD COLUMN ${fkColumn} ${fromPk.type};\nALTER TABLE ${target.name} ADD CONSTRAINT fk_${target.name}_${source.name} FOREIGN KEY (${fkColumn}) REFERENCES ${source.name}(${fromPk.name});`;
       })
       .filter(Boolean);
 
     return [...tableDdls, ...relDdls].join("\n\n");
-  }, [model]);
+  }, [model, dbEngine]);
 
   const entityDdl = (entity) => {
     if (!entity) return "";
@@ -644,9 +854,25 @@ function App() {
           <h2>Project</h2>
           <div className="field">
             <label>View Mode</label>
-            <select value={viewMode} onChange={(event) => setViewMode(event.target.value)}>
+            <select
+              value={viewMode}
+              onChange={(event) => setViewMode(event.target.value)}
+            >
               <option value="physical">Physical View</option>
               <option value="logical">Logical View</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Database</label>
+            <select
+              value={dbEngine}
+              onChange={(event) => setDbEngine(event.target.value)}
+            >
+              {DATABASES.map((db) => (
+                <option key={db.id} value={db.id}>
+                  {db.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="toolbar">
@@ -685,7 +911,17 @@ function App() {
         </div>
 
         <div className="card">
-          <h2>DDL (PostgreSQL)</h2>
+          <h2>
+            DDL (
+            {dbEngine === "databricks"
+              ? "Databricks"
+              : dbEngine === "oracle"
+                ? "Oracle"
+                : dbEngine === "mssql"
+                  ? "MS SQL Server"
+                  : "PostgreSQL"}
+            )
+          </h2>
           <textarea
             readOnly
             value={
@@ -931,7 +1167,7 @@ function App() {
                               updateAttribute(attr.id, { type: event.target.value })
                             }
                           >
-                            {PG_TYPES.map((type) => (
+                            {DB_TYPE_MAP[dbEngine].list.map((type) => (
                               <option key={type} value={type}>
                                 {type}
                               </option>
