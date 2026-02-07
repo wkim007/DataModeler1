@@ -1414,16 +1414,36 @@ function App() {
       </aside>
 
       {ddlEntityId && (
-        <div className="modal-backdrop" onClick={() => setDdlEntityId(null)}>
-          <div className="modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop">
+          <div className="modal resizable" onClick={(event) => event.stopPropagation()}>
             <header>
               <h3>DDL for {relationshipLookup.get(ddlEntityId)?.name}</h3>
-              <button
-                className="secondary"
-                onClick={() => setDdlEntityId(null)}
-              >
-                Close
-              </button>
+              <div className="toolbar">
+                <button
+                  className="icon-button"
+                  title="Copy DDL"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(
+                        entityDdl(relationshipLookup.get(ddlEntityId)),
+                      );
+                      setToast("DDL copied to clipboard");
+                      setTimeout(() => setToast(""), 2000);
+                    } catch (err) {
+                      setToast("Copy failed. Try manually.");
+                      setTimeout(() => setToast(""), 2000);
+                    }
+                  }}
+                >
+                  ⧉
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => setDdlEntityId(null)}
+                >
+                  Close
+                </button>
+              </div>
             </header>
             <pre className="sql-view sql-view-large">
               <code
@@ -1439,9 +1459,9 @@ function App() {
       )}
 
       {ddlOpen && (
-        <div className="modal-backdrop" onClick={() => setDdlOpen(false)}>
+        <div className="modal-backdrop">
           <div
-            className="modal modal-wide"
+            className="modal modal-wide modal-limited resizable"
             onClick={(event) => event.stopPropagation()}
           >
             <header>
@@ -1456,9 +1476,31 @@ function App() {
                       : "PostgreSQL"}
                 )
               </h3>
-              <button className="secondary" onClick={() => setDdlOpen(false)}>
-                Close
-              </button>
+              <div className="toolbar">
+                <button
+                  className="icon-button"
+                  title="Copy DDL"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(
+                        viewMode === "physical"
+                          ? ddl
+                          : "DDL is only available in Physical View.",
+                      );
+                      setToast("DDL copied to clipboard");
+                      setTimeout(() => setToast(""), 2000);
+                    } catch (err) {
+                      setToast("Copy failed. Try manually.");
+                      setTimeout(() => setToast(""), 2000);
+                    }
+                  }}
+                >
+                  ⧉
+                </button>
+                <button className="secondary" onClick={() => setDdlOpen(false)}>
+                  Close
+                </button>
+              </div>
             </header>
             <pre className="sql-view sql-view-large">
               <code
@@ -1478,7 +1520,7 @@ function App() {
       {jsonOpen && (
         <div className="modal-backdrop">
           <div
-            className="modal modal-wide"
+            className="modal modal-wide modal-limited resizable"
             onClick={(event) => event.stopPropagation()}
           >
             <header>
