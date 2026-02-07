@@ -331,6 +331,41 @@ textarea {
   resize: vertical;
 }
 
+.sql-view {
+  background: #0b1118;
+  color: #d0d6dd;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 12px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.sql-view-large {
+  max-height: 520px;
+}
+
+.sql-keyword {
+  color: #6cb4ff;
+  font-weight: 600;
+}
+
+.sql-type {
+  color: #7ee787;
+}
+
+.sql-string {
+  color: #f2cc8f;
+}
+
+.sql-comment {
+  color: #8b949e;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -351,6 +386,14 @@ textarea {
   box-shadow: var(--shadow);
   display: grid;
   gap: 12px;
+}
+
+.modal-wide {
+  width: min(960px, 96vw);
+}
+
+.modal-wide textarea {
+  min-height: 420px;
 }
 
 .modal header {

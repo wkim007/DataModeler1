@@ -285,6 +285,7 @@ function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [toast, setToast] = useState("");
   const [selectedAttrId, setSelectedAttrId] = useState(null);
+  const [ddlOpen, setDdlOpen] = useState(false);
 
   const boardRef = useRef(null);
   const dragRef = useRef({ id: null, offsetX: 0, offsetY: 0 });
@@ -697,6 +698,54 @@ function App() {
     return [...tableDdls, ...relDdls].join("\n\n");
   }, [model, dbEngine]);
 
+  const highlightSql = (input) => {
+    if (!input) return "";
+    const escaped = input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    const keywords = [
+      "CREATE",
+      "TABLE",
+      "ALTER",
+      "ADD",
+      "COLUMN",
+      "COLUMNS",
+      "CONSTRAINT",
+      "PRIMARY",
+      "KEY",
+      "FOREIGN",
+      "REFERENCES",
+      "NOT",
+      "NULL",
+    ];
+
+    const types = [
+      ...PG_TYPES,
+      ...DBX_TYPES,
+      ...ORACLE_TYPES,
+      ...MSSQL_TYPES,
+    ];
+
+    const keywordRegex = new RegExp(
+      `\\b(${keywords.join("|")})\\b`,
+      "gi",
+    );
+    const typeRegex = new RegExp(
+      `\\b(${types
+        .map((t) => t.replace(/\s+/g, "\\s+"))
+        .join("|")})\\b`,
+      "gi",
+    );
+
+    return escaped
+      .replace(/--.*$/gm, (match) => `<span class="sql-comment">${match}</span>`)
+      .replace(/'[^']*'/g, (match) => `<span class="sql-string">${match}</span>`)
+      .replace(keywordRegex, (match) => `<span class="sql-keyword">${match}</span>`)
+      .replace(typeRegex, (match) => `<span class="sql-type">${match}</span>`);
+  };
+
   const entityDdl = (entity) => {
     if (!entity) return "";
     const columns = entity.attributes.map((attr) => {
@@ -922,14 +971,22 @@ function App() {
                   : "PostgreSQL"}
             )
           </h2>
-          <textarea
-            readOnly
-            value={
-              viewMode === "physical"
-                ? ddl
-                : "DDL is only available in Physical View."
-            }
-          />
+          <pre className="sql-view">
+            <code
+              dangerouslySetInnerHTML={{
+                __html: highlightSql(
+                  viewMode === "physical"
+                    ? ddl
+                    : "DDL is only available in Physical View.",
+                ),
+              }}
+            />
+          </pre>
+          <div className="toolbar">
+            <button className="secondary" onClick={() => setDdlOpen(true)}>
+              View DDL
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1351,10 +1408,52 @@ function App() {
                 Close
               </button>
             </header>
-            <textarea
-              readOnly
-              value={entityDdl(relationshipLookup.get(ddlEntityId))}
-            />
+            <pre className="sql-view sql-view-large">
+              <code
+                dangerouslySetInnerHTML={{
+                  __html: highlightSql(
+                    entityDdl(relationshipLookup.get(ddlEntityId)),
+                  ),
+                }}
+              />
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {ddlOpen && (
+        <div className="modal-backdrop" onClick={() => setDdlOpen(false)}>
+          <div
+            className="modal modal-wide"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <h3>
+                Full DDL (
+                {dbEngine === "databricks"
+                  ? "Databricks"
+                  : dbEngine === "oracle"
+                    ? "Oracle"
+                    : dbEngine === "mssql"
+                      ? "MS SQL Server"
+                      : "PostgreSQL"}
+                )
+              </h3>
+              <button className="secondary" onClick={() => setDdlOpen(false)}>
+                Close
+              </button>
+            </header>
+            <pre className="sql-view sql-view-large">
+              <code
+                dangerouslySetInnerHTML={{
+                  __html: highlightSql(
+                    viewMode === "physical"
+                      ? ddl
+                      : "DDL is only available in Physical View.",
+                  ),
+                }}
+              />
+            </pre>
           </div>
         </div>
       )}
