@@ -1233,12 +1233,14 @@ function App() {
           {model.entities.map((entity) => (
             <div
               key={entity.id}
-              className={`entity ${selectedEntityId === entity.id ? "selected" : ""}`}
+              className={`entity ${selectedEntityId === entity.id ? "selected" : ""} ${
+                entity.height ? "" : "auto-size"
+              }`}
               style={{
                 left: entity.x,
                 top: entity.y,
                 width: entity.width ?? ENTITY_WIDTH,
-                height: getEntityHeight(entity),
+                height: entity.height ? getEntityHeight(entity) : "auto",
               }}
               onMouseDown={(event) => handleMouseDown(event, entity.id)}
               onClick={() => {

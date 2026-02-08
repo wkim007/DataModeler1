@@ -221,6 +221,11 @@ button:disabled {
   max-height: calc(100% - 40px);
 }
 
+.entity.auto-size ul {
+  max-height: none;
+  overflow: visible;
+}
+
 .resize-handle {
   position: absolute;
   right: 8px;
