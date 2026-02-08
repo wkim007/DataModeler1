@@ -287,6 +287,8 @@ function App() {
   const [selectedAttrId, setSelectedAttrId] = useState(null);
   const [ddlOpen, setDdlOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const boardRef = useRef(null);
   const dragRef = useRef({ id: null, offsetX: 0, offsetY: 0 });
@@ -388,8 +390,7 @@ function App() {
       const rect = board.getBoundingClientRect();
       const currentX =
         (event.clientX - rect.left - viewport.x) / viewport.scale;
-      const currentY =
-        (event.clientY - rect.top - viewport.y) / viewport.scale;
+      const currentY = (event.clientY - rect.top - viewport.y) / viewport.scale;
       const deltaX = currentX - resizeRef.current.startX;
       const deltaY = currentY - resizeRef.current.startY;
       const entity = model.entities.find(
@@ -661,6 +662,119 @@ function App() {
     }
   };
 
+  const typeFor = (key) => {
+    const map = {
+      id: {
+        postgresql: "uuid",
+        databricks: "string",
+        oracle: "raw",
+        mssql: "uniqueidentifier",
+      },
+      name: {
+        postgresql: "text",
+        databricks: "string",
+        oracle: "varchar2",
+        mssql: "nvarchar",
+      },
+      string: {
+        postgresql: "text",
+        databricks: "string",
+        oracle: "varchar2",
+        mssql: "nvarchar",
+      },
+      date: {
+        postgresql: "date",
+        databricks: "date",
+        oracle: "date",
+        mssql: "date",
+      },
+      timestamp: {
+        postgresql: "timestamp",
+        databricks: "timestamp",
+        oracle: "timestamp",
+        mssql: "datetime2",
+      },
+      number: {
+        postgresql: "integer",
+        databricks: "int",
+        oracle: "number",
+        mssql: "int",
+      },
+      decimal: {
+        postgresql: "numeric",
+        databricks: "decimal",
+        oracle: "number",
+        mssql: "decimal",
+      },
+    };
+    return map[key]?.[dbEngine] || DB_TYPE_MAP[dbEngine].fallback;
+  };
+
+  const buildEntity = (name, x, y, attrs) => ({
+    id: crypto.randomUUID(),
+    name,
+    x,
+    y,
+    width: ENTITY_WIDTH,
+    height: 0,
+    attributes: attrs.map((attr) => ({
+      id: crypto.randomUUID(),
+      name: attr.name,
+      type: attr.type,
+      isPrimary: !!attr.isPrimary,
+      isNullable: attr.isNullable ?? true,
+    })),
+  });
+
+  const generateSchemaFromPrompt = async () => {
+    const prompt = aiPrompt.trim().toLowerCase();
+    if (!prompt) return;
+    try {
+      setAiLoading(true);
+      setStatus("Generating AI model...");
+      const res = await fetch(`${API_BASE}/api/ai-model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, dbEngine }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "AI failed");
+      }
+      const data = await res.json();
+      const entities = (data.entities || []).map((item, index) =>
+        buildEntity(
+          item.name,
+          120 + (index % 3) * 280,
+          120 + Math.floor(index / 3) * 220,
+          (item.attributes || []).map((attr) => ({
+            ...attr,
+            type: convertType(attr.type, dbEngine),
+          })),
+        ),
+      );
+      const byName = Object.fromEntries(entities.map((e) => [e.name, e.id]));
+      const relationships = (data.relationships || [])
+        .filter((rel) => byName[rel.from] && byName[rel.to])
+        .map((rel) => ({
+          id: crypto.randomUUID(),
+          from: byName[rel.from],
+          to: byName[rel.to],
+          type: rel.type || "1:N",
+          label: rel.label || "relates_to",
+        }));
+      setModel({ entities, relationships });
+      setSelectedEntityId(null);
+      setSelectedAttrId(null);
+      setSelectedRelId(null);
+      setStatus("AI model generated.");
+    } catch (err) {
+      setStatus(`AI generation failed: ${err.message || "unknown error"}`);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const copyJsonToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(jsonDraft || "");
@@ -733,28 +847,27 @@ function App() {
       "NULL",
     ];
 
-    const types = [
-      ...PG_TYPES,
-      ...DBX_TYPES,
-      ...ORACLE_TYPES,
-      ...MSSQL_TYPES,
-    ];
+    const types = [...PG_TYPES, ...DBX_TYPES, ...ORACLE_TYPES, ...MSSQL_TYPES];
 
-    const keywordRegex = new RegExp(
-      `\\b(${keywords.join("|")})\\b`,
-      "gi",
-    );
+    const keywordRegex = new RegExp(`\\b(${keywords.join("|")})\\b`, "gi");
     const typeRegex = new RegExp(
-      `\\b(${types
-        .map((t) => t.replace(/\s+/g, "\\s+"))
-        .join("|")})\\b`,
+      `\\b(${types.map((t) => t.replace(/\s+/g, "\\s+")).join("|")})\\b`,
       "gi",
     );
 
     return escaped
-      .replace(/--.*$/gm, (match) => `<span class="sql-comment">${match}</span>`)
-      .replace(/'[^']*'/g, (match) => `<span class="sql-string">${match}</span>`)
-      .replace(keywordRegex, (match) => `<span class="sql-keyword">${match}</span>`)
+      .replace(
+        /--.*$/gm,
+        (match) => `<span class="sql-comment">${match}</span>`,
+      )
+      .replace(
+        /'[^']*'/g,
+        (match) => `<span class="sql-string">${match}</span>`,
+      )
+      .replace(
+        keywordRegex,
+        (match) => `<span class="sql-keyword">${match}</span>`,
+      )
       .replace(typeRegex, (match) => `<span class="sql-type">${match}</span>`);
   };
 
@@ -888,7 +1001,11 @@ function App() {
   };
 
   const getEntityHeight = (entity) => {
-    return Math.max(entity.height || 0, getEntityMinHeight(entity), RESIZE_MIN_H);
+    return Math.max(
+      entity.height || 0,
+      getEntityMinHeight(entity),
+      RESIZE_MIN_H,
+    );
   };
 
   const getAttrY = (entity, attrId) => {
@@ -1003,6 +1120,30 @@ function App() {
             <button className="secondary" onClick={() => setDdlOpen(true)}>
               View DDL
             </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2>AI Modeler</h2>
+          <div className="field">
+            <label>Schema Description</label>
+            <textarea
+              value={aiPrompt}
+              onChange={(event) => setAiPrompt(event.target.value)}
+              placeholder="e.g. HR schema with 5 tables"
+            />
+          </div>
+          <div className="toolbar">
+            <button
+              className="secondary"
+              onClick={generateSchemaFromPrompt}
+              disabled={aiLoading}
+            >
+              {aiLoading ? "Generating..." : "Generate"}
+            </button>
+            {aiLoading && (
+              <span className="spinner" aria-label="Loading"></span>
+            )}
           </div>
         </div>
       </aside>
@@ -1125,7 +1266,7 @@ function App() {
                 </button>
               </header>
               <ul>
-              {entity.attributes.map((attr) => (
+                {entity.attributes.map((attr) => (
                   <li
                     key={attr.id}
                     onClick={(event) => {
@@ -1133,7 +1274,9 @@ function App() {
                       setSelectedEntityId(entity.id);
                       setSelectedAttrId(attr.id);
                     }}
-                    className={selectedAttrId === attr.id ? "attr-selected" : ""}
+                    className={
+                      selectedAttrId === attr.id ? "attr-selected" : ""
+                    }
                   >
                     {viewMode === "physical" && (
                       <span className="badge">
@@ -1215,83 +1358,94 @@ function App() {
 
               <div className="divider"></div>
 
-              {selectedAttrId ? (() => {
-                const attr = selectedEntity.attributes.find((item) => item.id === selectedAttrId);
-                if (!attr) {
-                  return <p>Select an attribute to edit.</p>;
-                }
-                return (
-                  <div className="card" style={{ marginBottom: "10px" }}>
-                    <div className="field">
-                      <label>Attribute</label>
-                      <input
-                        value={attr.name}
-                        onChange={(event) =>
-                          updateAttribute(attr.id, { name: event.target.value })
-                        }
-                      />
+              {selectedAttrId ? (
+                (() => {
+                  const attr = selectedEntity.attributes.find(
+                    (item) => item.id === selectedAttrId,
+                  );
+                  if (!attr) {
+                    return <p>Select an attribute to edit.</p>;
+                  }
+                  return (
+                    <div className="card" style={{ marginBottom: "10px" }}>
+                      <div className="field">
+                        <label>Attribute</label>
+                        <input
+                          value={attr.name}
+                          onChange={(event) =>
+                            updateAttribute(attr.id, {
+                              name: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      {viewMode === "physical" && (
+                        <>
+                          <div className="field">
+                            <label>Type</label>
+                            <select
+                              value={attr.type}
+                              onChange={(event) =>
+                                updateAttribute(attr.id, {
+                                  type: event.target.value,
+                                })
+                              }
+                            >
+                              {DB_TYPE_MAP[dbEngine].list.map((type) => (
+                                <option key={type} value={type}>
+                                  {type}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="field">
+                            <label>Primary Key</label>
+                            <select
+                              value={attr.isPrimary ? "yes" : "no"}
+                              onChange={(event) =>
+                                updateAttribute(attr.id, {
+                                  isPrimary: event.target.value === "yes",
+                                })
+                              }
+                            >
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          </div>
+                          <div className="field">
+                            <label>Nullable</label>
+                            <select
+                              value={attr.isNullable ? "yes" : "no"}
+                              onChange={(event) =>
+                                updateAttribute(attr.id, {
+                                  isNullable: event.target.value === "yes",
+                                })
+                              }
+                            >
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+                      <div className="toolbar">
+                        <button
+                          className="secondary"
+                          onClick={() => setSelectedAttrId(null)}
+                        >
+                          Close
+                        </button>
+                        <button
+                          className="danger"
+                          onClick={() => deleteAttribute(attr.id)}
+                        >
+                          Delete Attribute
+                        </button>
+                      </div>
                     </div>
-                    {viewMode === "physical" && (
-                      <>
-                        <div className="field">
-                          <label>Type</label>
-                          <select
-                            value={attr.type}
-                            onChange={(event) =>
-                              updateAttribute(attr.id, { type: event.target.value })
-                            }
-                          >
-                            {DB_TYPE_MAP[dbEngine].list.map((type) => (
-                              <option key={type} value={type}>
-                                {type}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="field">
-                          <label>Primary Key</label>
-                          <select
-                            value={attr.isPrimary ? "yes" : "no"}
-                            onChange={(event) =>
-                              updateAttribute(attr.id, {
-                                isPrimary: event.target.value === "yes",
-                              })
-                            }
-                          >
-                            <option value="yes">Yes</option>
-                            <option value="no">No</option>
-                          </select>
-                        </div>
-                        <div className="field">
-                          <label>Nullable</label>
-                          <select
-                            value={attr.isNullable ? "yes" : "no"}
-                            onChange={(event) =>
-                              updateAttribute(attr.id, {
-                                isNullable: event.target.value === "yes",
-                              })
-                            }
-                          >
-                            <option value="yes">Yes</option>
-                            <option value="no">No</option>
-                          </select>
-                        </div>
-                      </>
-                    )}
-                    <div className="toolbar">
-                      <button className="secondary" onClick={() => setSelectedAttrId(null)}>
-                        Close
-                      </button>
-                      <button
-                        className="danger"
-                        onClick={() => deleteAttribute(attr.id)}
-                      >
-                        Delete Attribute
-                      </button>
-                    </div>
-                  </div>
-                );
-              })() : (
+                  );
+                })()
+              ) : (
                 <p>Select an attribute to edit.</p>
               )}
             </>
@@ -1303,93 +1457,102 @@ function App() {
         <div className="card">
           <h2>Relationships</h2>
           <div className="relationships">
-            {selectedRelId ? (() => {
-              const rel = model.relationships.find((item) => item.id === selectedRelId);
-              if (!rel) return <p>Select a relationship to edit.</p>;
-              const from = relationshipLookup.get(rel.from);
-              const to = relationshipLookup.get(rel.to);
-              return (
-                <div className="item">
-                  <div>
-                    <strong>{from ? from.name : "Unknown"}</strong> →{" "}
-                    <strong>{to ? to.name : "Unknown"}</strong>
+            {selectedRelId ? (
+              (() => {
+                const rel = model.relationships.find(
+                  (item) => item.id === selectedRelId,
+                );
+                if (!rel) return <p>Select a relationship to edit.</p>;
+                const from = relationshipLookup.get(rel.from);
+                const to = relationshipLookup.get(rel.to);
+                return (
+                  <div className="item">
+                    <div>
+                      <strong>{from ? from.name : "Unknown"}</strong> →{" "}
+                      <strong>{to ? to.name : "Unknown"}</strong>
+                    </div>
+                    <div className="field" style={{ marginTop: "8px" }}>
+                      <label>Label</label>
+                      <input
+                        value={rel.label}
+                        onChange={(event) =>
+                          updateRelationship(rel.id, {
+                            label: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label>From Attribute</label>
+                      <select
+                        value={rel.fromAttr || ""}
+                        onChange={(event) =>
+                          updateRelationship(rel.id, {
+                            fromAttr: event.target.value || null,
+                          })
+                        }
+                      >
+                        <option value="">Entity header</option>
+                        {from &&
+                          from.attributes.map((attr) => (
+                            <option key={attr.id} value={attr.id}>
+                              {attr.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>To Attribute</label>
+                      <select
+                        value={rel.toAttr || ""}
+                        onChange={(event) =>
+                          updateRelationship(rel.id, {
+                            toAttr: event.target.value || null,
+                          })
+                        }
+                      >
+                        <option value="">Entity header</option>
+                        {to &&
+                          to.attributes.map((attr) => (
+                            <option key={attr.id} value={attr.id}>
+                              {attr.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Cardinality</label>
+                      <select
+                        value={rel.type}
+                        onChange={(event) =>
+                          updateRelationship(rel.id, {
+                            type: event.target.value,
+                          })
+                        }
+                      >
+                        <option value="1:1">1:1</option>
+                        <option value="1:N">1:N</option>
+                        <option value="N:N">N:N</option>
+                      </select>
+                    </div>
+                    <div className="toolbar">
+                      <button
+                        className="secondary"
+                        onClick={() => setSelectedRelId(null)}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => deleteRelationship(rel.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="field" style={{ marginTop: "8px" }}>
-                    <label>Label</label>
-                    <input
-                      value={rel.label}
-                      onChange={(event) =>
-                        updateRelationship(rel.id, {
-                          label: event.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>From Attribute</label>
-                    <select
-                      value={rel.fromAttr || ""}
-                      onChange={(event) =>
-                        updateRelationship(rel.id, {
-                          fromAttr: event.target.value || null,
-                        })
-                      }
-                    >
-                      <option value="">Entity header</option>
-                      {from &&
-                        from.attributes.map((attr) => (
-                          <option key={attr.id} value={attr.id}>
-                            {attr.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>To Attribute</label>
-                    <select
-                      value={rel.toAttr || ""}
-                      onChange={(event) =>
-                        updateRelationship(rel.id, {
-                          toAttr: event.target.value || null,
-                        })
-                      }
-                    >
-                      <option value="">Entity header</option>
-                      {to &&
-                        to.attributes.map((attr) => (
-                          <option key={attr.id} value={attr.id}>
-                            {attr.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Cardinality</label>
-                    <select
-                      value={rel.type}
-                      onChange={(event) =>
-                        updateRelationship(rel.id, { type: event.target.value })
-                      }
-                    >
-                      <option value="1:1">1:1</option>
-                      <option value="1:N">1:N</option>
-                      <option value="N:N">N:N</option>
-                    </select>
-                  </div>
-                  <div className="toolbar">
-                    <button className="secondary" onClick={() => setSelectedRelId(null)}>
-                      Close
-                    </button>
-                    <button
-                      className="danger"
-                      onClick={() => deleteRelationship(rel.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              );
-            })() : (
+                );
+              })()
+            ) : (
               <p>Select a relationship to edit.</p>
             )}
           </div>
@@ -1415,7 +1578,10 @@ function App() {
 
       {ddlEntityId && (
         <div className="modal-backdrop">
-          <div className="modal resizable" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="modal resizable"
+            onClick={(event) => event.stopPropagation()}
+          >
             <header>
               <h3>DDL for {relationshipLookup.get(ddlEntityId)?.name}</h3>
               <div className="toolbar">
@@ -1533,7 +1699,10 @@ function App() {
                 >
                   ⧉
                 </button>
-                <button className="secondary" onClick={() => setJsonOpen(false)}>
+                <button
+                  className="secondary"
+                  onClick={() => setJsonOpen(false)}
+                >
                   Close
                 </button>
               </div>
