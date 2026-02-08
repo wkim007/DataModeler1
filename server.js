@@ -121,7 +121,12 @@ app.get("/api/model", async (req, res) => {
       .toArray();
     res.json(latest[0]?.data || null);
   } catch (err) {
-    res.status(500).json({ error: "Failed to load model." });
+    console.error("/api/model failed:", err);
+    res.status(500).json({
+      error: "Failed to load model.",
+      message: err.message,
+      name: err.name,
+    });
   }
 });
 
@@ -222,7 +227,9 @@ app.post("/api/ai-model", async (req, res) => {
     let jsonText = outputText;
     if (!jsonText) {
       const first = response.output?.[0];
-      const content = first?.content?.find((item) => item.type === "output_text");
+      const content = first?.content?.find(
+        (item) => item.type === "output_text",
+      );
       jsonText = content?.text?.trim();
     }
     if (!jsonText) {

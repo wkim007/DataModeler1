@@ -329,7 +329,12 @@ function App() {
     const loadLatest = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/model`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          const text = await res.text();
+          console.error("API error:", res.status, text);
+          setStatus(`API error: ${res.status}`);
+          return;
+        }
         const data = await res.json();
         if (data) {
           const normalized = convertModelTypesForModel(data, dbEngine);
